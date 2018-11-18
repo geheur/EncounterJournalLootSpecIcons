@@ -3,10 +3,8 @@ hooksecurefunc(_G, "EJ_SelectEncounter", function(id) currentEncounterID = id en
 -- My own loot list needs update thing --
 -- Make sure this stuff calls the previous versions of the set functions.
 lootSpecListCache = nil -- Used by loot spec icon attaching code.
-filteredLootList = nil -- used by transmog filter code.
 
 local function setNeedsUpdate()
-	filteredLootList = nil
 	lootSpecListCache = nil
 end
 local previous_EJ_SetSlotFilter = EJ_SetSlotFilter
@@ -192,95 +190,5 @@ do
 			init = true
 		end
 	end)
-end
-
--- Xmog filter --
-local ejFilterPredicate = nil
-
-local function canBeXmogged(itemID, encounterID, name, icon, slot, armorType, itemLink)
-	local text = CanIMogIt:GetTooltipText(itemLink)
-	if text == nil or name == nil then return true end
-
-	if text:find(CanIMogIt.L["Cannot learn: Soulbound"]) then return true end
-	local result = text:find("Not learned.")
-	print("item " .. name .. " " .. (result and "true" or "false"))
-	return result
-	--return text:find("Not learned.")
-
-	--if text:find(CanIMogIt.UNKNOWN) then return true end
-	--if text:find(CanIMogIt.UNKNOWN_SOULBOUND) then return true end
-	--if text:find(CanIMogIt.UNKNOWN_BY_CHARACTER) then return true end
-	--return text:find("Not learned.")
-end
-
-SLASH_TOGGLEENCOUNTERJOURNALTRANSMOGFILTER1 = "/ttf"
-SlashCmdList["TOGGLEENCOUNTERJOURNALTRANSMOGFILTER"] = function () toggleTransmogFilter() end
-function toggleTransmogFilter()
-	if ejFilterPredicate == canBeXmogged then
-		ejFilterPredicate = nil
-		print("Transmog filter disabled")
-	else
-		ejFilterPredicate = canBeXmogged
-		print("Transmog filter enabled")
-	end
-	if EncounterJournalEncounterFrameInfoLootScrollFrame and EncounterJournalEncounterFrameInfoLootScrollFrame:IsVisible() then
-		EncounterJournalEncounterFrameInfoLootScrollFrame:Hide()
-		EncounterJournalEncounterFrameInfoLootScrollFrame:Show()
-	end
-end
-
-do
-	local previous_EJ_GetLootInfoByIndex = EJ_GetLootInfoByIndex
-	local previous_EJ_GetNumLoot = EJ_GetNumLoot
-	local function makeSureLootListIsFiltered()
-		if filteredLootList then return end
-		filteredLootList = {}
-
-		local index = 0
-		for i=1,previous_EJ_GetNumLoot() do
-			local itemInfo = {previous_EJ_GetLootInfoByIndex(i)}
-			if ejFilterPredicate(unpack(itemInfo)) then
-				index = index + 1
-				filteredLootList[#filteredLootList+1] = itemInfo
-				--return unpack(itemInfo)
-			end
-		end
-	end
-
-	local previous_EJ_GetLootInfoByIndex = EJ_GetLootInfoByIndex
-	local previous_EJ_GetNumLoot = EJ_GetNumLoot
-	function EJ_GetNumLoot()
-		if not ejFilterPredicate then return previous_EJ_GetNumLoot() end
-		makeSureLootListIsFiltered()
-		return #filteredLootList
-
-		--EJ_SetSlotFilter(0)
-		--local xmogIndex = 0
-		--for i=1,previous_EJ_GetNumLoot() do
-			--if ejFilterPredicate(previous_EJ_GetLootInfoByIndex(i)) then
-				--xmogIndex = xmogIndex + 1
-			--end
-		--end
-		--return xmogIndex
-	end
-
-	function EJ_GetLootInfoByIndex(index)
-		if index > EJ_GetNumLoot() then return nil end
-		if not transmogFilterEnabled then return previous_EJ_GetLootInfoByIndex(index) end
-		makeSureLootListIsFiltered()
-		return unpack(filteredLootList[index])
-
-		--EJ_SetSlotFilter(0)
-		--local xmogIndex = 0
-		--for i=1,previous_EJ_GetNumLoot() do
-			--local itemInfo = {previous_EJ_GetLootInfoByIndex(i)}
-			--if ejFilterPredicate(unpack(itemInfo)) then
-				--xmogIndex = xmogIndex + 1
-				--if xmogIndex == index then
-					--return unpack(itemInfo)
-				--end
-			--end
-		--end
-	end
 end
 
