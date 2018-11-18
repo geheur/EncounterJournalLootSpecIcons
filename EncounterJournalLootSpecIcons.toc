@@ -1,0 +1,10 @@
+## Interface: 80000
+## Title: EncounterJournalLootSpecIcons
+## Author: geheur
+## Version: 1.0
+## Notes: 
+## DefaultState: Enabled
+## LoadOnDemand: 0
+## SavedVariables: 
+
+main.lua
