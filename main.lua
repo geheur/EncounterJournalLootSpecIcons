@@ -26,8 +26,8 @@ function EJ_SetDifficulty(difficulty)
 end
 local previous_EJ_SetLootFilter = EJ_SetLootFilter
 function EJ_SetLootFilter(classID, specID)
-	print("EJ_SetLootFilter hook", classID, specID)
-	local a = nil a[1] = 2
+	--print("EJ_SetLootFilter hook", classID, specID)
+	--local a = nil a[1] = 2
 	setNeedsUpdate()
 	previous_EJ_SetLootFilter(classID, specID)
 end
@@ -72,14 +72,38 @@ local function attachLootSpecSwapButtons()
 		end)
 		lastButton = frame
 	end
+
+	-- TODO move.
+		local frameName = "transmogbutton"..1
+		local frame = _G[frameName]
+		local specID,_,_,icon,_,_ = GetSpecializationInfo(1)
+		if not frame then
+			frame = CreateFrame("BUTTON", frameName, EncounterJournal) -- TODO
+			frame:SetSize(40, 40)
+		end
+		if lastButton then
+			frame:SetPoint("BOTTOMRIGHT", lastButton, "TOPRIGHT")
+		else
+			frame:SetPoint("BOTTOMLEFT", EncounterJournal, "BOTTOMRIGHT") -- TODO
+		end
+		if not frame.texture then frame.texture = frame:CreateTexture() end
+		frame.texture:SetAllPoints(frame)
+		frame.texture:SetTexture(icon)
+		if transmogFilterEnabled() then
+			frame.texture:SetDesaturated(false)
+		else
+			frame.texture:SetDesaturated(true)
+		end
+		frame:SetScript("OnClick", function()
+			toggleTransmogFilter()
+		end)
+		lastButton = frame
 end
 
 -- TODO Tooltips.
 local function updateEncounterJournalLootSpecButtons()
 	attachLootSpecSwapButtons()
 end
-
--- loot spec
 
 local specIDs = {
 	[6] = { 250, 251, 252, },
@@ -194,40 +218,9 @@ do
 	end)
 end
 
--- Xmog filter --
+-- Loot list filtering --
 local ejFilterPredicate = nil
-
-local function canBeXmogged(itemID, encounterID, name, icon, slot, armorType, itemLink)
-	local text = CanIMogIt:GetTooltipText(itemLink)
-	if text == nil or name == nil then return true end
-
-	if text:find(CanIMogIt.L["Cannot learn: Soulbound"]) then return true end
-	local result = text:find("Not learned.")
-	print("item " .. name .. " " .. (result and "true" or "false"))
-	return result
-	--return text:find("Not learned.")
-
-	--if text:find(CanIMogIt.UNKNOWN) then return true end
-	--if text:find(CanIMogIt.UNKNOWN_SOULBOUND) then return true end
-	--if text:find(CanIMogIt.UNKNOWN_BY_CHARACTER) then return true end
-	--return text:find("Not learned.")
-end
-
-SLASH_TOGGLEENCOUNTERJOURNALTRANSMOGFILTER1 = "/ttf"
-SlashCmdList["TOGGLEENCOUNTERJOURNALTRANSMOGFILTER"] = function () toggleTransmogFilter() end
-function toggleTransmogFilter()
-	if ejFilterPredicate == canBeXmogged then
-		ejFilterPredicate = nil
-		print("Transmog filter disabled")
-	else
-		ejFilterPredicate = canBeXmogged
-		print("Transmog filter enabled")
-	end
-	if EncounterJournalEncounterFrameInfoLootScrollFrame and EncounterJournalEncounterFrameInfoLootScrollFrame:IsVisible() then
-		EncounterJournalEncounterFrameInfoLootScrollFrame:Hide()
-		EncounterJournalEncounterFrameInfoLootScrollFrame:Show()
-	end
-end
+--local ejLootListSortComparator = nil -- XXX unused, unimplemented.
 
 do
 	local previous_EJ_GetLootInfoByIndex = EJ_GetLootInfoByIndex
@@ -236,51 +229,86 @@ do
 		if filteredLootList then return end
 		filteredLootList = {}
 
-		local index = 0
 		for i=1,previous_EJ_GetNumLoot() do
 			local itemInfo = {previous_EJ_GetLootInfoByIndex(i)}
 			if ejFilterPredicate(unpack(itemInfo)) then
-				index = index + 1
 				filteredLootList[#filteredLootList+1] = itemInfo
-				--return unpack(itemInfo)
 			end
 		end
 	end
 
-	local previous_EJ_GetLootInfoByIndex = EJ_GetLootInfoByIndex
-	local previous_EJ_GetNumLoot = EJ_GetNumLoot
 	function EJ_GetNumLoot()
 		if not ejFilterPredicate then return previous_EJ_GetNumLoot() end
 		makeSureLootListIsFiltered()
-		return #filteredLootList
 
-		--EJ_SetSlotFilter(0)
-		--local xmogIndex = 0
-		--for i=1,previous_EJ_GetNumLoot() do
-			--if ejFilterPredicate(previous_EJ_GetLootInfoByIndex(i)) then
-				--xmogIndex = xmogIndex + 1
-			--end
-		--end
-		--return xmogIndex
+		return #filteredLootList
 	end
 
 	function EJ_GetLootInfoByIndex(index)
-		if index > EJ_GetNumLoot() then return nil end
-		if not transmogFilterEnabled then return previous_EJ_GetLootInfoByIndex(index) end
+		if not ejFilterPredicate then return previous_EJ_GetLootInfoByIndex(index) end
 		makeSureLootListIsFiltered()
-		return unpack(filteredLootList[index])
 
-		--EJ_SetSlotFilter(0)
-		--local xmogIndex = 0
-		--for i=1,previous_EJ_GetNumLoot() do
-			--local itemInfo = {previous_EJ_GetLootInfoByIndex(i)}
-			--if ejFilterPredicate(unpack(itemInfo)) then
-				--xmogIndex = xmogIndex + 1
-				--if xmogIndex == index then
-					--return unpack(itemInfo)
-				--end
-			--end
-		--end
+		return unpack(filteredLootList[index])
+	end
+end
+
+-- Xmog filter --
+local function canBeXmoggedByCharacter(itemID, encounterID, name, icon, slot, armorType, itemLink)
+	local text = CanIMogIt:GetTooltipText(itemLink)
+	if text == nil or name == nil then return true end
+
+	return text:find("Not learned.")
+end
+
+local function canBeXmogged(itemID, encounterID, name, icon, slot, armorType, itemLink)
+	local text = CanIMogIt:GetTooltipText(itemLink)
+	if text == nil or name == nil then return true end
+
+	if text:find(CanIMogIt.L["Cannot learn: Soulbound"]) then return true end
+	if text:find("Not learned.") then return true end
+end
+
+SLASH_TOGGLEENCOUNTERJOURNALTRANSMOGFILTER1 = "/ttf"
+SlashCmdList["TOGGLEENCOUNTERJOURNALTRANSMOGFILTER"] = function () toggleTransmogFilter() end
+local nonXmogClassFilter, nonXmogSpecFilter
+function toggleTransmogFilter()
+	if ejFilterPredicate == canBeXmoggedByCharacter then
+		ejFilterPredicate = canBeXmogged
+		print("Transmog filter enabled (transmog any)")
+	elseif ejFilterPredicate == canBeXmogged then
+		ejFilterPredicate = nil
+		local class, spec = EJ_GetLootFilter()
+		if nonXmogClassFilter and class == 0 and spec == 0 then EJ_SetLootFilter(nonXmogClassFilter, nonXmogSpecFilter) end
+		print("Transmog filter disabled")
+	else
+		ejFilterPredicate = canBeXmoggedByCharacter
+		nonXmogClassFilter, nonXmogSpecFilter = EJ_GetLootFilter()
+		previous_EJ_SetLootFilter(0, 0)
+		print("Transmog filter enabled (transmog you)")
+	end
+	filteredLootList = nil
+	EncounterJournal_OnFilterChanged()
+end
+
+function transmogFilterEnabled()
+	return ejFilterPredicate ~= nil
+end
+
+-- Disable bonus roll button opening of encounterjournal from setting spec filter.
+do
+	local previous_OpenBonusRollEncounterJournalLink = OpenBonusRollEncounterJournalLink
+	function OpenBonusRollEncounterJournalLink()
+		local prev = EJ_SetLootFilter
+		local currentClass,currentSpec = EJ_GetLootFilter()
+		EJ_SetLootFilter = function(class, spec)
+			if currentClass == class then
+				prev(class, currentSpec)
+			else
+				prev(class, 0)
+			end
+		end
+		previous_OpenBonusRollEncounterJournalLink()
+		EJ_SetLootFilter = prev
 	end
 end
 
