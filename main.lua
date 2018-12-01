@@ -1,5 +1,20 @@
 hooksecurefunc(_G, "EJ_SelectEncounter", function(id) currentEncounterID = id end)
 
+local specIDs = {
+	[6] = { 250, 251, 252, },
+	[12] = { 577, 581, },
+	[11] = { 102, 103, 104, 105, },
+	[3] = { 253, 254, 255, },
+	[8] = { 62, 63, 64, },
+	[10] = { 268, 269, 270, },
+	[2] = { 65, 66, 70, },
+	[5] = { 256, 257, 258, },
+	[4] = { 259, 260, 261, },
+	[7] = { 262, 263, 264, },
+	[9] = { 265, 266, 267, },
+	[1] = { 71, 72, 73, },
+}
+
 -- My own loot list needs update thing --
 -- Make sure this stuff calls the previous versions of the set functions.
 lootSpecListCache = nil -- Used by loot spec icon attaching code.
@@ -34,10 +49,34 @@ function EJ_SelectEncounter(encounterID)
 	setNeedsUpdate()
 	previous_EJ_SelectEncounter(encounterID)
 end
-local previous_EJ_SelectInstance = EJ_SelectInstance
-function EJ_SelectInstance(instanceID)
-	setNeedsUpdate()
-	previous_EJ_SelectInstance(instanceID)
+do
+	local instance
+	local previous_EJ_SelectInstance = EJ_SelectInstance
+	function EJ_SelectInstance(instanceID)
+		setNeedsUpdate()
+		instance = instanceID
+		previous_EJ_SelectInstance(instanceID)
+	end
+	function EJ_GetCurrentlyDisplayedInstanceID()
+		return instance
+	end
+end
+do
+	local shouldHaveRaidFinder = { -- format: instanceID=true
+		[187]=true,
+		[317]=true,
+		[330]=true,
+		[320]=true,
+		[362]=true,
+	}
+	local previous_EJ_IsValidInstanceDifficulty = EJ_IsValidInstanceDifficulty
+	function EJ_IsValidInstanceDifficulty(difficultyID, ...)
+		local instanceID = EJ_GetCurrentlyDisplayedInstanceID()
+		if difficultyID == 7 and instanceID and shouldHaveRaidFinder[instanceID] then
+			return true
+		end
+		return previous_EJ_IsValidInstanceDifficulty(difficultyID, ...)
+	end
 end
 
 local function attachLootSpecSwapButtons()
@@ -75,24 +114,8 @@ end
 -- TODO Tooltips.
 local function updateEncounterJournalLootSpecButtons()
 	attachLootSpecSwapButtons()
+	attachTransmogFilterButton()
 end
-
--- loot spec
-
-local specIDs = {
-	[6] = { 250, 251, 252, },
-	[12] = { 577, 581, },
-	[11] = { 102, 103, 104, 105, },
-	[3] = { 253, 254, 255, },
-	[8] = { 62, 63, 64, },
-	[10] = { 268, 269, 270, },
-	[2] = { 65, 66, 70, },
-	[5] = { 256, 257, 258, },
-	[4] = { 259, 260, 261, },
-	[7] = { 262, 263, 264, },
-	[9] = { 265, 266, 267, },
-	[1] = { 71, 72, 73, },
-}
 
 -- returns the class that loot spec icons are being shown/should be shown for.
 local function getSpecIconClassID()
