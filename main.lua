@@ -1,11 +1,27 @@
 hooksecurefunc(_G, "EJ_SelectEncounter", function(id) currentEncounterID = id end)
 
+local specIDs = {
+	[6] = { 250, 251, 252, },
+	[12] = { 577, 581, },
+	[11] = { 102, 103, 104, 105, },
+	[3] = { 253, 254, 255, },
+	[8] = { 62, 63, 64, },
+	[10] = { 268, 269, 270, },
+	[2] = { 65, 66, 70, },
+	[5] = { 256, 257, 258, },
+	[4] = { 259, 260, 261, },
+	[7] = { 262, 263, 264, },
+	[9] = { 265, 266, 267, },
+	[1] = { 71, 72, 73, },
+}
+
 -- My own loot list needs update thing --
 -- Make sure this stuff calls the previous versions of the set functions.
 lootSpecListCache = nil -- Used by loot spec icon attaching code.
 filteredLootList = nil -- used by transmog filter code.
 
 local function setNeedsUpdate()
+	print("sNU")
 	filteredLootList = nil
 	lootSpecListCache = nil
 end
@@ -36,10 +52,34 @@ function EJ_SelectEncounter(encounterID)
 	setNeedsUpdate()
 	previous_EJ_SelectEncounter(encounterID)
 end
-local previous_EJ_SelectInstance = EJ_SelectInstance
-function EJ_SelectInstance(instanceID)
-	setNeedsUpdate()
-	previous_EJ_SelectInstance(instanceID)
+do
+	local instance
+	local previous_EJ_SelectInstance = EJ_SelectInstance
+	function EJ_SelectInstance(instanceID)
+		setNeedsUpdate()
+		instance = instanceID
+		previous_EJ_SelectInstance(instanceID)
+	end
+	function EJ_GetCurrentlyDisplayedInstanceID()
+		return instance
+	end
+end
+do
+	local shouldHaveRaidFinder = { -- format: instanceID=true
+		[187]=true,
+		[317]=true,
+		[330]=true,
+		[320]=true,
+		[362]=true,
+	}
+	local previous_EJ_IsValidInstanceDifficulty = EJ_IsValidInstanceDifficulty
+	function EJ_IsValidInstanceDifficulty(difficultyID, ...)
+		local instanceID = EJ_GetCurrentlyDisplayedInstanceID()
+		if difficultyID == 7 and instanceID and shouldHaveRaidFinder[instanceID] then
+			return true
+		end
+		return previous_EJ_IsValidInstanceDifficulty(difficultyID, ...)
+	end
 end
 
 local function attachLootSpecSwapButtons()
@@ -73,13 +113,47 @@ local function attachLootSpecSwapButtons()
 		lastButton = frame
 	end
 
-	-- TODO move.
-		local frameName = "transmogbutton"..1
+	frameName = "transmogbutton"..1
+	frame = _G[frameName]
+	local specID,_,_,icon,_,_ = GetSpecializationInfo(1)
+	if not frame then
+		frame = CreateFrame("BUTTON", frameName, EncounterJournal) -- TODO
+		frame:SetSize(40, 40)
+	end
+	if lastButton then
+		--print("attach 1")
+		frame:SetPoint("BOTTOMRIGHT", lastButton, "TOPRIGHT", 0, 25)
+	else
+		--print("attach 2")
+		frame:SetPoint("BOTTOMLEFT", EncounterJournal, "BOTTOMRIGHT") -- TODO
+	end
+	if not frame.texture then frame.texture = frame:CreateTexture() end
+	frame.texture:SetAllPoints(frame)
+	frame.texture:SetTexture(icon)
+	if transmogFilterEnabled() then
+		frame.texture:SetDesaturated(false)
+	else
+		frame.texture:SetDesaturated(true)
+	end
+	frame:SetScript("OnClick", function()
+		toggleTransmogFilter()
+	end)
+end
+
+local function attachClassFilterButtons()
+	local baseNameSpecChooseButton = "myclassbutton"
+	local lastButton = nil
+	local desiredLootSpec = GetLootSpecialization() -- TODO
+	for i=1,#specIDs do
+		local frameName = baseNameSpecChooseButton..i
 		local frame = _G[frameName]
-		local specID,_,_,icon,_,_ = GetSpecializationInfo(1)
+		local specID,_,_,icon,_,_ = GetSpecializationInfo(i)
 		if not frame then
 			frame = CreateFrame("BUTTON", frameName, EncounterJournal) -- TODO
 			frame:SetSize(40, 40)
+			frame:SetScript("OnClick", function()
+				EJ_SetLootFilter(i, 7)
+			end)
 		end
 		if lastButton then
 			frame:SetPoint("BOTTOMRIGHT", lastButton, "TOPRIGHT")
@@ -89,36 +163,23 @@ local function attachLootSpecSwapButtons()
 		if not frame.texture then frame.texture = frame:CreateTexture() end
 		frame.texture:SetAllPoints(frame)
 		frame.texture:SetTexture(icon)
-		if transmogFilterEnabled() then
+		if specID == desiredLootSpec then
 			frame.texture:SetDesaturated(false)
 		else
 			frame.texture:SetDesaturated(true)
 		end
-		frame:SetScript("OnClick", function()
-			toggleTransmogFilter()
-		end)
 		lastButton = frame
+	end
+end
+
+local function attachTransmogFilterButton()
 end
 
 -- TODO Tooltips.
 local function updateEncounterJournalLootSpecButtons()
 	attachLootSpecSwapButtons()
+	attachTransmogFilterButton()
 end
-
-local specIDs = {
-	[6] = { 250, 251, 252, },
-	[12] = { 577, 581, },
-	[11] = { 102, 103, 104, 105, },
-	[3] = { 253, 254, 255, },
-	[8] = { 62, 63, 64, },
-	[10] = { 268, 269, 270, },
-	[2] = { 65, 66, 70, },
-	[5] = { 256, 257, 258, },
-	[4] = { 259, 260, 261, },
-	[7] = { 262, 263, 264, },
-	[9] = { 265, 266, 267, },
-	[1] = { 71, 72, 73, },
-}
 
 -- returns the class that loot spec icons are being shown/should be shown for.
 local function getSpecIconClassID()
