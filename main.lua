@@ -1,5 +1,6 @@
-hooksecurefunc(_G, "EJ_SelectEncounter", function(id) currentEncounterID = id end)
+local _,private = ...
 
+local MAX_SPECS = 4 -- druid has 5 specs
 local specIDs = {
 	[6] = { 250, 251, 252, },
 	[12] = { 577, 581, },
@@ -14,113 +15,65 @@ local specIDs = {
 	[9] = { 265, 266, 267, },
 	[1] = { 71, 72, 73, },
 }
+local buttonPool = {}
 
--- My own loot list needs update thing --
--- Make sure this stuff calls the previous versions of the set functions.
 lootSpecListCache = nil -- Used by loot spec icon attaching code.
 
 local function setNeedsUpdate()
 	lootSpecListCache = nil
 end
-local previous_EJ_SetSlotFilter = EJ_SetSlotFilter
-function EJ_SetSlotFilter(tier)
+
+local original_EJ_SetLootFilter = EJ_SetLootFilter
+function EJ_SetLootFilter(...)
 	setNeedsUpdate()
-	previous_EJ_SetSlotFilter(tier)
+	original_EJ_SetLootFilter(...)
 end
-local previous_EJ_SelectTier = EJ_SelectTier
-function EJ_SelectTier(tier)
-	setNeedsUpdate()
-	previous_EJ_SelectTier(tier)
-end
-local previous_EJ_SetDifficulty = EJ_SetDifficulty
-function EJ_SetDifficulty(difficulty)
-	setNeedsUpdate()
-	previous_EJ_SetDifficulty(difficulty)
-end
-local previous_EJ_SetLootFilter = EJ_SetLootFilter
-function EJ_SetLootFilter(classID, specID)
-	print("EJ_SetLootFilter hook", classID, specID)
-	local a = nil a[1] = 2
-	setNeedsUpdate()
-	previous_EJ_SetLootFilter(classID, specID)
-end
-local previous_EJ_SelectEncounter = EJ_SelectEncounter
-function EJ_SelectEncounter(encounterID)
-	setNeedsUpdate()
-	previous_EJ_SelectEncounter(encounterID)
-end
-do
-	local instance
-	local previous_EJ_SelectInstance = EJ_SelectInstance
-	function EJ_SelectInstance(instanceID)
-		setNeedsUpdate()
-		instance = instanceID
-		previous_EJ_SelectInstance(instanceID)
-	end
-	function EJ_GetCurrentlyDisplayedInstanceID()
-		return instance
-	end
-end
-do
-	local shouldHaveRaidFinder = { -- format: instanceID=true
-		[187]=true,
-		[317]=true,
-		[330]=true,
-		[320]=true,
-		[362]=true,
-	}
-	local previous_EJ_IsValidInstanceDifficulty = EJ_IsValidInstanceDifficulty
-	function EJ_IsValidInstanceDifficulty(difficultyID, ...)
-		local instanceID = EJ_GetCurrentlyDisplayedInstanceID()
-		if difficultyID == 7 and instanceID and shouldHaveRaidFinder[instanceID] then
-			return true
-		end
-		return previous_EJ_IsValidInstanceDifficulty(difficultyID, ...)
-	end
+hooksecurefunc(_G, "EJ_SelectInstance", function(id) setNeedsUpdate() private.currentlyDisplayedInstanceID = id end)
+for _,func in ipairs{"EJ_SetSlotFilter", "EJ_SelectTier", "EJ_SetDifficulty", "EJ_SelectEncounter"} do
+	hooksecurefunc(_G, func, setNeedsUpdate)
 end
 
-local function attachLootSpecSwapButtons()
-	local baseNameSpecChooseButton = "mylootspecchoiceshowingbutton"
+local BASE_NAME_SPEC_CHOOSE_BUTTON = "mylootspecchoiceshowingbutton"
+local function updateEncounterJournalLootSpecSwapButtons()
 	local lastButton = nil
-	local desiredLootSpec = GetLootSpecialization() -- TODO
+	local desiredLootSpec = GetLootSpecialization()
 	for i=1,GetNumSpecializations() do
-		local frameName = baseNameSpecChooseButton..i
-		local frame = _G[frameName]
-		local specID,_,_,icon,_,_ = GetSpecializationInfo(i)
+		local frameName = BASE_NAME_SPEC_CHOOSE_BUTTON..i
+		local frame = buttonPool[frameName]
+		local specID,specName,_,icon,_,_ = GetSpecializationInfo(i)
 		if not frame then
-			frame = CreateFrame("BUTTON", frameName, EncounterJournal) -- TODO
+			frame = CreateFrame("BUTTON", nil, EncounterJournal)
+			buttonPool[frameName] = frame;
+			frame.texture = frame:CreateTexture()
+			frame.texture:SetAllPoints(frame)
 			frame:SetSize(40, 40)
+			frame:SetScript("OnClick", function() SetLootSpecialization(specID) end)
+			frame:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+				local iconString =  (frame.isCurrentLootSpec and "Your loot spec is currently set to" or "Switch your loot spec to").." |T"..icon..":20|t "..specName.."."
+				GameTooltip:SetText(iconString, nil, nil, nil, nil, true)
+				GameTooltip:Show()
+			end)
+			frame:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
 		end
 		if lastButton then
 			frame:SetPoint("BOTTOMRIGHT", lastButton, "TOPRIGHT")
 		else
-			frame:SetPoint("BOTTOMLEFT", EncounterJournal, "BOTTOMRIGHT") -- TODO
+			frame:SetPoint("BOTTOMLEFT", EncounterJournal, "BOTTOMRIGHT")
 		end
-		if not frame.texture then frame.texture = frame:CreateTexture() end
-		frame.texture:SetAllPoints(frame)
+
 		frame.texture:SetTexture(icon)
-		if specID == desiredLootSpec then
-			frame.texture:SetDesaturated(false)
-		else
-			frame.texture:SetDesaturated(true)
-		end
-		frame:SetScript("OnClick", function()
-			SetLootSpecialization(specID)
-		end)
+		frame.isCurrentLootSpec = specID == desiredLootSpec
+		frame.texture:SetDesaturated(not frame.isCurrentLootSpec)
+
 		lastButton = frame
 	end
-end
-
--- TODO Tooltips.
-local function updateEncounterJournalLootSpecButtons()
-	attachLootSpecSwapButtons()
-	attachTransmogFilterButton()
 end
 
 -- returns the class that loot spec icons are being shown/should be shown for.
 local function getSpecIconClassID()
 	local currentClassFilter = EJ_GetLootFilter()
-	if currentClassFilter == 0 then -- if no class is selected, use player's class for icons (although items for all classes will be shown in the list).
+	if currentClassFilter == 0 then -- use player's class.
 		return select(3, UnitClass("player"))
 	else
 		return currentClassFilter
@@ -139,7 +92,7 @@ local function getSpecLootInfo()
 		local specID = specIDs[classID][i]
 		local _,_,_,icon = GetSpecializationInfoByID(specID)
 
-		previous_EJ_SetLootFilter(classID, specID)
+		original_EJ_SetLootFilter(classID, specID)
 		for j=1,EJ_GetNumLoot() do
 			local itemID = EJ_GetLootInfoByIndex(j)
 
@@ -149,13 +102,16 @@ local function getSpecLootInfo()
 	end
 	lootSpecListCache = loots
 
-	previous_EJ_SetLootFilter(previousClassFilter, previousSpecFilter)
+	original_EJ_SetLootFilter(previousClassFilter, previousSpecFilter)
 	return lootSpecListCache
 end
 
+local SPEC_ICON_FRAME_NAME = "MyLootSpecIcons"
 local function updateEncounterJournalLootSpecItems()
-	if not EncounterJournalEncounterFrameInfoLootScrollFrame or not EncounterJournalEncounterFrameInfoLootScrollFrame:IsShown() then return end
-	local SPECICONFRAMENAME = "MyLootSpecIcons"
+	if not EncounterJournalEncounterFrameInfoLootScrollFrame
+			or not EncounterJournalEncounterFrameInfoLootScrollFrame:IsShown() then
+		return
+	end
 
 	local loots = getSpecLootInfo()
 
@@ -167,13 +123,15 @@ local function updateEncounterJournalLootSpecItems()
 		local specIconCount = 1
 		if loots[lootFrame.itemID] then
 			for lootSpecID,forThisLootSpec in pairs(loots[lootFrame.itemID]) do
-				local iconFrameName = SPECICONFRAMENAME..i.."_"..specIconCount
+				local iconFrameName = SPEC_ICON_FRAME_NAME..i.."_"..specIconCount
 				if forThisLootSpec then
-					local specFrame = _G[iconFrameName]
+					local specFrame = buttonPool[iconFrameName]
 					if not specFrame then
 						specFrame = CreateFrame("FRAME", iconFrameName, lootFrame)
+						buttonPool[iconFrameName] = specFrame
 						specFrame:SetSize(20, 20)
 						specFrame.texture = specFrame:CreateTexture()
+						specFrame.texture:SetAllPoints(specFrame)
 					end
 					specFrame:Show()
 
@@ -184,11 +142,9 @@ local function updateEncounterJournalLootSpecItems()
 					end
 
 					local _,_,_,icon = GetSpecializationInfoByID(lootSpecID);
-					specFrame.texture:SetAllPoints(specFrame)
 					specFrame.texture:SetTexture(icon)
 
 					previousSpecFrame = specFrame
-
 					specIconCount = specIconCount + 1
 				end
 			end
@@ -197,8 +153,8 @@ local function updateEncounterJournalLootSpecItems()
 			lootFrame.armorType:ClearAllPoints()
 			lootFrame.armorType:SetPoint("RIGHT", previousSpecFrame, "LEFT", -3, 0)
 		end
-		for j=specIconCount,#specIDs[getSpecIconClassID()] do
-			local specFrame = _G[SPECICONFRAMENAME..i.."_"..j]
+		for j=specIconCount,MAX_SPECS do
+			local specFrame = buttonPool[SPEC_ICON_FRAME_NAME..i.."_"..j]
 			if specFrame then specFrame:Hide() end
 		end
 	end
@@ -208,10 +164,25 @@ do
 	local init
 	hooksecurefunc(_G, "EncounterJournal_LoadUI", function()
 		if not init then
-			EncounterJournal:HookScript("OnUpdate", updateEncounterJournalLootSpecItems)
-			EncounterJournal:HookScript("OnUpdate", updateEncounterJournalLootSpecButtons)
+			EncounterJournal:HookScript("OnUpdate", function()
+				updateEncounterJournalLootSpecItems()
+				updateEncounterJournalLootSpecSwapButtons()
+			end)
 			init = true
 		end
 	end)
+end
+
+--[[
+Disable bonus roll button opening of encounterjournal from setting spec filter,
+since this addon makes spec filters mostly useless.
+--]]
+do
+	local previous_OpenBonusRollEncounterJournalLink = OpenBonusRollEncounterJournalLink
+	function OpenBonusRollEncounterJournalLink()
+		local currentClass,currentSpec = EJ_GetLootFilter()
+		previous_OpenBonusRollEncounterJournalLink()
+		EJ_SetLootFilter(currentClass, currentSpec)
+	end
 end
 
