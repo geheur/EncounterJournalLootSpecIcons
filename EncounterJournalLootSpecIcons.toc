@@ -1,11 +1,13 @@
 ## Interface: 80000
 ## Title: EncounterJournalLootSpecIcons
 ## Author: geheur
-## Version: 1.0
+## Version: @project-version@
 ## Notes: 
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## SavedVariables: 
+
+## X-Curse-Project-ID: 313894
 
 main.lua
 25manLFRFix.lua
