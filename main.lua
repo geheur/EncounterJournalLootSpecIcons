@@ -29,9 +29,10 @@ function EJ_SetLootFilter(...)
 	original_EJ_SetLootFilter(...)
 end
 hooksecurefunc(_G, "EJ_SelectInstance", function(id) setNeedsUpdate() private.currentlyDisplayedInstanceID = id end)
-for _,func in ipairs{"EJ_SetSlotFilter", "EJ_SelectTier", "EJ_SetDifficulty", "EJ_SelectEncounter"} do
+for _,func in ipairs{"EJ_SelectTier", "EJ_SetDifficulty", "EJ_SelectEncounter"} do
 	hooksecurefunc(_G, func, setNeedsUpdate)
 end
+hooksecurefunc(C_EncounterJournal, "SetSlotFilter", setNeedsUpdate)
 
 local BASE_NAME_SPEC_CHOOSE_BUTTON = "mylootspecchoiceshowingbutton"
 local function updateEncounterJournalLootSpecSwapButtons()
@@ -94,7 +95,7 @@ local function getSpecLootInfo()
 
 		original_EJ_SetLootFilter(classID, specID)
 		for j=1,EJ_GetNumLoot() do
-			local itemID = EJ_GetLootInfoByIndex(j)
+			local itemID = C_EncounterJournal.GetLootInfoByIndex(j).itemID
 
 			if not loots[itemID] then loots[itemID] = {} end
 			loots[itemID][specID] = true
