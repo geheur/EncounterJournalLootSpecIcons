@@ -10,4 +10,3 @@
 ## X-Curse-Project-ID: 313894
 
 main.lua
-25manLFRFix.lua
