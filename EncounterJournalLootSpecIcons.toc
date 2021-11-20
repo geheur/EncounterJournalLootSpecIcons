@@ -1,4 +1,4 @@
-## Interface: 90002
+## Interface: 90105
 ## Title: EncounterJournalLootSpecIcons
 ## Author: geheur
 ## Version: @project-version@

@@ -117,18 +117,18 @@ local function updateEncounterJournalLootSpecItems()
 	local loots = getSpecLootInfo()
 
 	for i=1,EJ_GetNumLoot() do
-		local lootFrame = _G["EncounterJournalEncounterFrameInfoLootScrollFrameButton"..i]
-		if not lootFrame then break end
+		local itemButton = _G["EncounterJournalEncounterFrameInfoLootScrollFrameButton"..i]
+		if not itemButton then break end
 
 		local previousSpecFrame = nil
 		local specIconCount = 1
-		if loots[lootFrame.itemID] then
-			for lootSpecID,forThisLootSpec in pairs(loots[lootFrame.itemID]) do
+		if loots[itemButton.itemID] then
+			for lootSpecID,forThisLootSpec in pairs(loots[itemButton.itemID]) do
 				local iconFrameName = SPEC_ICON_FRAME_NAME..i.."_"..specIconCount
 				if forThisLootSpec then
 					local specFrame = buttonPool[iconFrameName]
 					if not specFrame then
-						specFrame = CreateFrame("FRAME", iconFrameName, lootFrame)
+						specFrame = CreateFrame("FRAME", iconFrameName, itemButton)
 						buttonPool[iconFrameName] = specFrame
 						specFrame:SetSize(20, 20)
 						specFrame.texture = specFrame:CreateTexture()
@@ -136,8 +136,9 @@ local function updateEncounterJournalLootSpecItems()
 					end
 					specFrame:Show()
 
+					specFrame:ClearAllPoints()
 					if not previousSpecFrame then
-						specFrame:SetPoint("BOTTOMRIGHT", lootFrame, "BOTTOMRIGHT", 0, 3)
+						specFrame:SetPoint("BOTTOMRIGHT", itemButton.lootFrame.name, "TOPLEFT", 264, -30 - 3) -- besides the -3, this is the same anchor as armorType uses.
 					else
 						specFrame:SetPoint("TOPRIGHT", previousSpecFrame, "TOPLEFT")
 					end
@@ -150,9 +151,9 @@ local function updateEncounterJournalLootSpecItems()
 				end
 			end
 		end
-		if previousSpecFrame then
-			lootFrame.armorType:ClearAllPoints()
-			lootFrame.armorType:SetPoint("RIGHT", previousSpecFrame, "LEFT", -3, 0)
+		if previousSpecFrame and itemButton.lootFrame.armorType then
+			itemButton.lootFrame.armorType:ClearAllPoints()
+			itemButton.lootFrame.armorType:SetPoint("RIGHT", previousSpecFrame, "LEFT", -3, -2)
 		end
 		for j=specIconCount,MAX_SPECS do
 			local specFrame = buttonPool[SPEC_ICON_FRAME_NAME..i.."_"..j]
