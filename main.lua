@@ -1,35 +1,16 @@
 local _,private = ...
 
 local MAX_SPECS = 4 -- druid has 5 specs
-local specIDs = {
-	[6] = { 250, 251, 252, },
-	[12] = { 577, 581, },
-	[11] = { 102, 103, 104, 105, },
-	[3] = { 253, 254, 255, },
-	[8] = { 62, 63, 64, },
-	[10] = { 268, 269, 270, },
-	[2] = { 65, 66, 70, },
-	[5] = { 256, 257, 258, },
-	[4] = { 259, 260, 261, },
-	[7] = { 262, 263, 264, },
-	[9] = { 265, 266, 267, },
-	[1] = { 71, 72, 73, },
-}
-local buttonPool = {}
 
-lootSpecListCache = nil -- Used by loot spec icon attaching code.
+local buttonPoolSpecSwap = {}
+local buttonPoolIcons = {}
 
+-- may be a premature optimization
+local lootSpecListCache = nil
 local function setNeedsUpdate()
 	lootSpecListCache = nil
 end
-
-local original_EJ_SetLootFilter = EJ_SetLootFilter
-function EJ_SetLootFilter(...)
-	setNeedsUpdate()
-	original_EJ_SetLootFilter(...)
-end
-hooksecurefunc(_G, "EJ_SelectInstance", function(id) setNeedsUpdate() private.currentlyDisplayedInstanceID = id end)
-for _,func in ipairs{"EJ_SelectTier", "EJ_SetDifficulty", "EJ_SelectEncounter"} do
+for _,func in ipairs{"EJ_SelectTier", "EJ_SetDifficulty", "EJ_SelectEncounter", "EJ_SelectInstance", "EJ_SelectInstance", "EJ_SetLootFilter"} do
 	hooksecurefunc(_G, func, setNeedsUpdate)
 end
 hooksecurefunc(C_EncounterJournal, "SetSlotFilter", setNeedsUpdate)
@@ -40,11 +21,11 @@ local function updateEncounterJournalLootSpecSwapButtons()
 	local desiredLootSpec = GetLootSpecialization()
 	for i=1,GetNumSpecializations() do
 		local frameName = BASE_NAME_SPEC_CHOOSE_BUTTON..i
-		local frame = buttonPool[frameName]
+		local frame = buttonPoolSpecSwap[frameName]
 		local specID,specName,_,icon,_,_ = GetSpecializationInfo(i)
 		if not frame then
 			frame = CreateFrame("BUTTON", nil, EncounterJournal)
-			buttonPool[frameName] = frame;
+			buttonPoolSpecSwap[frameName] = frame;
 			frame.texture = frame:CreateTexture()
 			frame.texture:SetAllPoints(frame)
 			frame:SetSize(40, 40)
@@ -88,12 +69,12 @@ local function getSpecLootInfo()
 
 	local previousClassFilter, previousSpecFilter = EJ_GetLootFilter()
 
+	-- n.b. EJ_SetLootFilter sets lootSpecListCache to nil, so store its value in a local variable until you're done calling EJ_SetLootFilter.
 	local loots = {}
-	for i=1,#specIDs[classID] do
-		local specID = specIDs[classID][i]
-		local _,_,_,icon = GetSpecializationInfoByID(specID)
-
-		original_EJ_SetLootFilter(classID, specID)
+	for i=1,MAX_SPECS do
+		local specID = GetSpecializationInfoForClassID(classID, i)
+		if not specID then break end
+		EJ_SetLootFilter(classID, specID)
 		for j=1,EJ_GetNumLoot() do
 			local itemID = C_EncounterJournal.GetLootInfoByIndex(j).itemID
 
@@ -101,62 +82,67 @@ local function getSpecLootInfo()
 			loots[itemID][specID] = true
 		end
 	end
-	lootSpecListCache = loots
+	EJ_SetLootFilter(previousClassFilter, previousSpecFilter)
 
-	original_EJ_SetLootFilter(previousClassFilter, previousSpecFilter)
+	lootSpecListCache = loots
 	return lootSpecListCache
 end
 
 local SPEC_ICON_FRAME_NAME = "MyLootSpecIcons"
 local function updateEncounterJournalLootSpecItems()
-	if not EncounterJournalEncounterFrameInfoLootScrollFrame
-			or not EncounterJournalEncounterFrameInfoLootScrollFrame:IsShown() then
+	if not EncounterJournalEncounterFrameInfo.LootContainer.ScrollBox
+			or not EncounterJournalEncounterFrameInfo.LootContainer.ScrollBox:IsShown() then
 		return
+	end
+
+	-- wtf 10.0, I don't understand what happened to scroll frames but this hiding is necessary.
+	for name,frame in pairs(buttonPoolIcons) do
+		frame:Hide()
 	end
 
 	local loots = getSpecLootInfo()
 
-	for i=1,EJ_GetNumLoot() do
-		local itemButton = _G["EncounterJournalEncounterFrameInfoLootScrollFrameButton"..i]
-		if not itemButton then break end
-
+	for scrollItemIndex,itemButton in ipairs(EncounterJournalEncounterFrameInfo.LootContainer.ScrollBox:GetFrames()) do
 		local previousSpecFrame = nil
 		local specIconCount = 1
 		if loots[itemButton.itemID] then
-			for lootSpecID,forThisLootSpec in pairs(loots[itemButton.itemID]) do
-				local iconFrameName = SPEC_ICON_FRAME_NAME..i.."_"..specIconCount
-				if forThisLootSpec then
-					local specFrame = buttonPool[iconFrameName]
-					if not specFrame then
-						specFrame = CreateFrame("FRAME", iconFrameName, itemButton)
-						buttonPool[iconFrameName] = specFrame
-						specFrame:SetSize(20, 20)
-						specFrame.texture = specFrame:CreateTexture()
-						specFrame.texture:SetAllPoints(specFrame)
-					end
-					specFrame:Show()
-
-					specFrame:ClearAllPoints()
-					if not previousSpecFrame then
-						specFrame:SetPoint("BOTTOMRIGHT", itemButton.lootFrame.name, "TOPLEFT", 264, -30 - 3) -- besides the -3, this is the same anchor as armorType uses.
-					else
-						specFrame:SetPoint("TOPRIGHT", previousSpecFrame, "TOPLEFT")
-					end
-
-					local _,_,_,icon = GetSpecializationInfoByID(lootSpecID);
-					specFrame.texture:SetTexture(icon)
-
-					previousSpecFrame = specFrame
-					specIconCount = specIconCount + 1
+			for lootSpecID,_ in pairs(loots[itemButton.itemID]) do
+				local iconFrameName = SPEC_ICON_FRAME_NAME..scrollItemIndex.."_"..specIconCount
+				local specFrame = buttonPoolIcons[iconFrameName]
+				if not specFrame then
+					specFrame = CreateFrame("FRAME", iconFrameName, itemButton)
+					buttonPoolIcons[iconFrameName] = specFrame
+					specFrame:SetSize(20, 20)
+					specFrame.texture = specFrame:CreateTexture()
+					specFrame.texture:SetAllPoints(specFrame)
 				end
+				specFrame:Show()
+				specFrame:SetParent(itemButton)
+
+				specFrame:ClearAllPoints()
+				if not previousSpecFrame then
+					specFrame:SetPoint("BOTTOMRIGHT", itemButton.name, "TOPLEFT", 264, -30 - 3) -- besides the -3, this is the same anchor as armorType uses.
+				else
+					specFrame:SetPoint("TOPRIGHT", previousSpecFrame, "TOPLEFT")
+				end
+
+				local _,_,_,icon = GetSpecializationInfoByID(lootSpecID);
+				specFrame.texture:SetTexture(icon)
+
+				previousSpecFrame = specFrame
+				specIconCount = specIconCount + 1
 			end
 		end
-		if previousSpecFrame and itemButton.lootFrame.armorType then
-			itemButton.lootFrame.armorType:ClearAllPoints()
-			itemButton.lootFrame.armorType:SetPoint("RIGHT", previousSpecFrame, "LEFT", -3, -2)
+		if itemButton.armorType then
+			itemButton.armorType:ClearAllPoints()
+			if previousSpecFrame and itemButton.armorType then
+				itemButton.armorType:SetPoint("RIGHT", previousSpecFrame, "LEFT", -3, -2)
+			else
+				itemButton.armorType:SetPoint("BOTTOMRIGHT", itemButton.name, "TOPLEFT", 264, -30)
+			end
 		end
 		for j=specIconCount,MAX_SPECS do
-			local specFrame = buttonPool[SPEC_ICON_FRAME_NAME..i.."_"..j]
+			local specFrame = buttonPoolIcons[SPEC_ICON_FRAME_NAME..scrollItemIndex.."_"..j]
 			if specFrame then specFrame:Hide() end
 		end
 	end
@@ -173,18 +159,5 @@ do
 			init = true
 		end
 	end)
-end
-
---[[
-Disable bonus roll button opening of encounterjournal from setting spec filter,
-since this addon makes spec filters mostly useless.
---]]
-do
-	local previous_OpenBonusRollEncounterJournalLink = OpenBonusRollEncounterJournalLink
-	function OpenBonusRollEncounterJournalLink()
-		local currentClass,currentSpec = EJ_GetLootFilter()
-		previous_OpenBonusRollEncounterJournalLink()
-		EJ_SetLootFilter(currentClass, currentSpec)
-	end
 end
 
