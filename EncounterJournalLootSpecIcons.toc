@@ -3,6 +3,7 @@
 ## Author: geheur
 ## Version: @project-version@
 ## Notes: 
+## Notes-ruRU: Значки спецификаций добычи в журнале подземелий и рейдов
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## SavedVariables: 
