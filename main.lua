@@ -11,9 +11,13 @@ local function setNeedsUpdate()
 	lootSpecListCache = nil
 end
 for _,func in ipairs{"EJ_SelectTier", "EJ_SetDifficulty", "EJ_SelectEncounter", "EJ_SelectInstance", "EJ_SelectInstance", "EJ_SetLootFilter"} do
-	hooksecurefunc(_G, func, setNeedsUpdate)
+	if _G[func] then
+		hooksecurefunc(_G, func, setNeedsUpdate)
+	end
 end
-hooksecurefunc(C_EncounterJournal, "SetSlotFilter", setNeedsUpdate)
+if C_EncounterJournal and C_EncounterJournal.SetSlotFilter then
+	hooksecurefunc(C_EncounterJournal, "SetSlotFilter", setNeedsUpdate)
+end
 
 local BASE_NAME_SPEC_CHOOSE_BUTTON = "mylootspecchoiceshowingbutton"
 local function updateEncounterJournalLootSpecSwapButtons()
@@ -150,14 +154,22 @@ end
 
 do
 	local init
-	hooksecurefunc(_G, "EncounterJournal_LoadUI", function()
-		if not init then
-			EncounterJournal:HookScript("OnUpdate", function()
-				updateEncounterJournalLootSpecItems()
-				updateEncounterJournalLootSpecSwapButtons()
-			end)
-			init = true
+	local function hookOnUpdate()
+		if init then return end
+		if not EncounterJournal then return end
+		EncounterJournal:HookScript("OnUpdate", function()
+			updateEncounterJournalLootSpecItems()
+			updateEncounterJournalLootSpecSwapButtons()
+		end)
+		init = true
+	end
+
+	local loader = CreateFrame("Frame")
+	loader:RegisterEvent("ADDON_LOADED")
+	loader:SetScript("OnEvent", function(self, event, addonName)
+		if addonName == "Blizzard_EncounterJournal" then
+			hookOnUpdate()
+			self:UnregisterEvent("ADDON_LOADED")
 		end
 	end)
 end
-
